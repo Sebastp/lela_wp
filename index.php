@@ -12,7 +12,16 @@ if ( ! wp_next_scheduled( 'leela_loopback_get_posts' ) ) {
 
 add_action( 'leela_loopback_get_posts', 'leela_loopback_read' );
 
+add_action ('wp','leela_loopback_force');
+
+function leela_loopback_force() {
+    if($_GET['loopback']=='run') {
+        leela_loopback_read();
+    }
+}
+
 function  leela_loopback_read() {
+    global $user;
     //read api
     //iterate
     $meta=false;
@@ -39,6 +48,14 @@ function  leela_loopback_read() {
     //add posts that do not exist
     foreach($api_posts as $post) {
          //create new post
+        $new_post = array(
+          'ID' => '',
+          'post_author' => $user->ID,
+          'post_content' => $post->content,
+          'post_title' => $post->title,
+          'post_status' => 'publish'
+        );
+        $post_id = wp_insert_post($new_post);
     }
 }
 
