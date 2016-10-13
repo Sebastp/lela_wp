@@ -75,14 +75,21 @@ function  leela_loopback_read() {
  * Wrapper for curl to request loopback api
  *
  * @param string url Loopback api endpoint
+ * @param string $data (optional) data to send to loopback api as json post
  *
  * @return string response of loopback request
  */
-function leela_curl($url) {
+function leela_curl($url, $data=false) {
     $curl_handle=curl_init();
     curl_setopt($curl_handle,CURLOPT_URL,$url);
     curl_setopt($curl_handle,CURLOPT_CONNECTTIMEOUT,2);
     curl_setopt($curl_handle,CURLOPT_RETURNTRANSFER,1);
+    if($data) {
+        curl_setopt($ch, CURLOPT_HTTPHEADER,'Accept: application/json','Content-Type: application/json');
+        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "POST");
+        curl_setopt($ch, CURLOPT_POST,1);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
+    }
     $buffer = curl_exec($curl_handle);
     curl_close($curl_handle);
     if (empty($buffer)) {
