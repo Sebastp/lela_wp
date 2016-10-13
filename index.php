@@ -148,4 +148,24 @@ function leela_loopback_post_key($wp_id, $loopback_id) {
        update_post_meta( $wp_id, 'loopback_id', $loopback_id );
     }
 }
+
+add_action('publish_post','leela_lookup_update');
+
+/**
+ * Writes post to loopback api
+ *
+ * Sends title and content to loopback api for upsert
+ * Uses wp post meta loopback_id as loopback api post id
+ * Function is hooked into wp publish_post action
+ *
+ * @param integer $ID id of post, used for "loopback_id" meta value lookup
+ * @param object $post wp post object
+ *
+ * @returns string response from loopback api
+ */
+function leela_postback_write($ID, $post) {
+    $title = $post->post_title;
+    $content = $post->post_content;
+    $loopback_id = get_post_meta($ID, 'loopback_id');
+}
 ?>
