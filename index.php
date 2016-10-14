@@ -82,13 +82,12 @@ function  leela_loopback_read() {
 function leela_curl($url, $data=false) {
     $curl_handle=curl_init();
     curl_setopt($curl_handle,CURLOPT_URL,$url);
-    curl_setopt($curl_handle,CURLOPT_CONNECTTIMEOUT,2);
+    curl_setopt($curl_handle,CURLOPT_CONNECTTIMEOUT,10);
     curl_setopt($curl_handle,CURLOPT_RETURNTRANSFER,1);
     if($data) {
-        curl_setopt($ch, CURLOPT_HTTPHEADER,'Accept: application/json','Content-Type: application/json');
-        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "POST");
-        curl_setopt($ch, CURLOPT_POST,1);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
+        curl_setopt($curl_handle, CURLOPT_HTTPHEADER,'Accept: application/json','Content-Type: application/json');
+        curl_setopt($curl_handle, CURLOPT_CUSTOMREQUEST, "PUT");
+        curl_setopt($curl_handle, CURLOPT_POSTFIELDS, http_build_query($data));
     }
     $buffer = curl_exec($curl_handle);
     curl_close($curl_handle);
@@ -156,7 +155,7 @@ function leela_loopback_post_key($wp_id, $loopback_id) {
     }
 }
 
-add_action('publish_post','leela_lookup_update');
+add_action('publish_post','leela_postback_write',10,2);
 
 /**
  * Writes post to loopback api
@@ -168,11 +167,16 @@ add_action('publish_post','leela_lookup_update');
  * @param integer $ID id of post, used for "loopback_id" meta value lookup
  * @param object $post wp post object
  *
- * @returns string response from loopback api
  */
 function leela_postback_write($ID, $post) {
     $title = $post->post_title;
     $content = $post->post_content;
     $loopback_id = get_post_meta($ID, 'loopback_id');
+    try {
+        $result=leela_curl(LOOPBACK_URL.'/api/posts', array('title'=>$title,'content'=>$content,'id'=>$loopback_id));
+    }
+    catch (RuntimeException $e) {
+        return;
+    }
 }
 ?>
