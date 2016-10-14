@@ -38,7 +38,7 @@ function  leela_loopback_read() {
     //iterate
     $meta=false;
     $api_posts=false;
-    foreach(json_decode(leela_curl(LOOPBACK_URL.'/api/posts', leela_login())) as $api) {
+    foreach(json_decode(leela_curl(LOOPBACK_URL.'/api/show', leela_login())) as $api) {
         //create list of api posts for later wp_query, so we don't run queries
         //in a loop
         $meta = leela_lookup_append_id($meta, $api->id);
@@ -79,7 +79,7 @@ function  leela_loopback_read() {
  *
  * @return string response of loopback request
  */
-function leela_curl($url, $token=false; $data=false) {
+function leela_curl($url, $token=false, $data=false) {
     if($token) {
         $url=$url.'?access_token='.$token;
     }
