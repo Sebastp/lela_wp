@@ -38,7 +38,7 @@ function  leela_loopback_read() {
     //iterate
     $meta=false;
     $api_posts=false;
-    foreach(json_decode(leela_curl(LOOPBACK_URL.'/api/posts')) as $api) {
+    foreach(json_decode(leela_curl(LOOPBACK_URL.'/api/posts', leela_login())) as $api) {
         //create list of api posts for later wp_query, so we don't run queries
         //in a loop
         $meta = leela_lookup_append_id($meta, $api->id);
@@ -79,7 +79,10 @@ function  leela_loopback_read() {
  *
  * @return string response of loopback request
  */
-function leela_curl($url, $data=false) {
+function leela_curl($url, $token=false; $data=false) {
+    if($token) {
+        $url=$url.'?access_token='.$token;
+    }
     $curl_handle=curl_init();
     curl_setopt($curl_handle,CURLOPT_URL,$url);
     curl_setopt($curl_handle,CURLOPT_CONNECTTIMEOUT,10);
@@ -173,10 +176,16 @@ function leela_postback_write($ID, $post) {
     $content = $post->post_content;
     $loopback_id = get_post_meta($ID, 'loopback_id');
     try {
-        $result=leela_curl(LOOPBACK_URL.'/api/posts', array('title'=>$title,'content'=>$content,'id'=>$loopback_id));
+        $result=leela_curl(LOOPBACK_URL.'/api/posts', leela_login(), array('title'=>$title,'content'=>$content,'id'=>$loopback_id));
     }
     catch (RuntimeException $e) {
         return;
     }
+}
+
+function leela_login() {
+    $response=leela_curl(LOOPBACK_URL.'/users/login', false, array('email'=>LOOPBACK_EMAIL,'password'=>LOOPBACK_PASSWORD,'ttl'=>60));
+    $response=json_decode($response);
+    return $response['token'];
 }
 ?>
