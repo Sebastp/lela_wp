@@ -4,8 +4,11 @@ Plugin Name: Lela Studios Loopback
 Description: Reads loopback posts from api and creates wordpress posts. Writes new wordpress posts to loopback api
 */
 
-define('LOOPBACK_URL','https://whispering-river-30674.herokuapp.com');
-
+define('LOOPBACK_URL','https://lelastudios.herokuapp.com');
+define('LOOPBACK_EMAIL', 'admin@admin.com');
+define('LOOPBACK_PASSWORD', 'admin');
+//skip unique titles regardless, extra protection if keys fail
+define('LEELA_UNIQUE_TITLES', false);
 //cron to get posts
 if ( ! wp_next_scheduled( 'leela_loopback_get_posts' ) ) {
   wp_schedule_event( time(), 'hourly', 'leela_loopback_get_posts' );
@@ -14,7 +17,7 @@ if ( ! wp_next_scheduled( 'leela_loopback_get_posts' ) ) {
 add_action( 'leela_loopback_get_posts', 'leela_loopback_read' );
 
 //query_var force get posts
-add_action ('wp','leela_loopback_force');
+add_action ('init','leela_loopback_force');
 
 /**
  * Force api read if loopback query var is set to "run"
@@ -22,9 +25,11 @@ add_action ('wp','leela_loopback_force');
  * Used by hooking into wp action, allows user to force a api pull instead of waiting for cron
  */
 function leela_loopback_force() {
-    if($_GET['loopback']=='run') {
+    global $runonce;
+    if($_GET['loopback']=='run' && !$runonce) {
         leela_loopback_read();
     }
+    $runonce=false;
 }
 
 /**
@@ -33,41 +38,50 @@ function leela_loopback_force() {
  * Posts store api id in "loopback_id" meta value
  */
 function  leela_loopback_read() {
+    remove_action('publish_post','leela_postback_write',10);
     global $user;
     //read api
     //iterate
     $meta=false;
     $api_posts=false;
-    foreach(json_decode(leela_curl(LOOPBACK_URL.'/api/show', leela_login())) as $api) {
+    $token=leela_login();
+    $data=json_decode(leela_curl(LOOPBACK_URL.'/api/posts/show', $token));
+    foreach($data->post as $api) {
         //create list of api posts for later wp_query, so we don't run queries
         //in a loop
         $meta = leela_lookup_append_id($meta, $api->id);
         //index api posts by post_id for easy access
-        $api_posts[$api->id]=$api;
+        $api_posts[$meta[0]['value']]=$api;
     }
     //lookup posts from wordpress
-    $meta_query = new WP_Meta_Query($meta);
+    $meta_query = leela_lookup_meta($meta);
     //update existing posts if content is different
-    foreach($meta_query as $update_post) {
+    while ( $meta_query->have_posts() ) {
+        $meta_query->the_post();
         //@TODO: confirm if different method exists to get_post_meta inside
         //this loop, concern exists about running sql in a loop, may need to
         //refactor to plain old SQL, but meta_values are RBAR
         $api_id = get_post_meta(get_the_ID(), 'loopback_id');
-        //check if bodies match, if not, update
+        //@TODO: check if bodies match, if not, update
         //remove from api posts, later we need to loop to add new posts
         unset($api_posts[$api_id]);
     }
     //add posts that do not exist
+    $userid=get_current_user_id();
     foreach($api_posts as $post) {
-         //create new post
+        //create new post
         $new_post = array(
           'ID' => '',
-          'post_author' => $user->ID,
+          'post_author' => $userid,
           'post_content' => $post->content,
           'post_title' => $post->title,
           'post_status' => 'publish'
         );
-        $post_id = wp_insert_post($new_post);
+        $db_post=get_page_by_title($post->title, OBJECT, 'post');
+        if(!is_object($db_post) && LEELA_UNIQUE_TITLES) {
+            $post_id = wp_insert_post($new_post);
+            leela_loopback_post_key($post_id, $loopback_id);
+        }
     }
 }
 
@@ -88,9 +102,9 @@ function leela_curl($url, $token=false, $data=false) {
     curl_setopt($curl_handle,CURLOPT_CONNECTTIMEOUT,10);
     curl_setopt($curl_handle,CURLOPT_RETURNTRANSFER,1);
     if($data) {
-        curl_setopt($curl_handle, CURLOPT_HTTPHEADER,'Accept: application/json','Content-Type: application/json');
-        curl_setopt($curl_handle, CURLOPT_CUSTOMREQUEST, "PUT");
-        curl_setopt($curl_handle, CURLOPT_POSTFIELDS, http_build_query($data));
+        curl_setopt($curl_handle, CURLOPT_HTTPHEADER,array('Accept: application/json','Content-Type: application/json'));
+        curl_setopt($curl_handle, CURLOPT_CUSTOMREQUEST, "POST");
+        curl_setopt($curl_handle, CURLOPT_POSTFIELDS, json_encode($data));
     }
     $buffer = curl_exec($curl_handle);
     curl_close($curl_handle);
@@ -136,10 +150,12 @@ function leela_lookup_meta($meta) {
      $args = array(
         'meta_query' => array(
             'relation'=>'OR',
-            $meta
-        ),
+        )
     );
-    return new WP_Meta_Query( $meta_query_args );
+     foreach($meta as $row) {
+          $args['meta_query'][]=$row;
+    }
+    return new WP_Query( $args );
 }
 
 /**
@@ -176,7 +192,7 @@ function leela_postback_write($ID, $post) {
     $content = $post->post_content;
     $loopback_id = get_post_meta($ID, 'loopback_id');
     try {
-        $result=leela_curl(LOOPBACK_URL.'/api/posts', leela_login(), array('title'=>$title,'content'=>$content,'id'=>$loopback_id));
+        $result=leela_curl(LOOPBACK_URL.'/api/posts/publish', leela_login(), array('title'=>$title,'content'=>$content,'id'=>$loopback_id));
     }
     catch (RuntimeException $e) {
         return;
@@ -184,8 +200,8 @@ function leela_postback_write($ID, $post) {
 }
 
 function leela_login() {
-    $response=leela_curl(LOOPBACK_URL.'/users/login', false, array('email'=>LOOPBACK_EMAIL,'password'=>LOOPBACK_PASSWORD,'ttl'=>60));
+    $response=leela_curl(LOOPBACK_URL.'/api/users/login', false, array('email'=>LOOPBACK_EMAIL,'password'=>LOOPBACK_PASSWORD,'ttl'=>60));
     $response=json_decode($response);
-    return $response['token'];
+    return $response->id;
 }
 ?>
